@@ -1,9 +1,36 @@
 [package]
-name = "debot-ml"
-version = "0.1.0"
+name = "debot_ml"
+version = "0.1.6"
+authors = ["Shigeo NAKAMURA <nakamura_shigeo@yahoo.com>"]
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "ML prediction"
+documentation = "https://docs.rs/debot-ml/"
+homepage = "https://crates.io/crates/debot-ml"
+repository = "https://github.com/shigeo-nakamura/debot-ml"
+license = "MIT"
 
 [dependencies]
-tangram = "0.7.0"
+log = "0.4.21"
+rand = "0.8.5"
+serde = { version = "1.0.201", features = ["derive"] }
+serde_json = "1.0.117"
+smartcore = { version = "0.3.2", features = ["serde"] }
+bincode = "1.3.3"
+tokio = { version = "1.0", features = ["full"] }
+env_logger = "0.10.0"
+
+debot-db = "1.3.18"
+rust_decimal = "1.35.0"
+
+[dependencies.mongodb]
+version = "2.2.1"
+default-features = false
+features = ["async-std-runtime"]                                 
+
+[lib]
+name = "debot_ml"
+path = "src/lib.rs"
+
+[[bin]]
+name = "debot_ml"
+path = "src/main.rs"

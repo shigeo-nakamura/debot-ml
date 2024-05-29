@@ -374,7 +374,12 @@ async fn download_data(
         }
     }
 
+    let count_class_0 = outputs.iter().filter(|&&x| x == 0).count();
+    let count_class_1 = outputs.iter().filter(|&&x| x == 1).count();
+
     log::info!("num of inputs = {}", inputs.len());
+    log::info!("Number of class 0 samples = {}", count_class_0);
+    log::info!("Number of class 1 samples = {}", count_class_1);
 
     let input_slices: Vec<&[f64]> = inputs.iter().map(|v| v.as_slice()).collect();
     let x = DenseMatrix::from_2d_array(&input_slices);

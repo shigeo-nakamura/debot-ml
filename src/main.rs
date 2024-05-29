@@ -30,8 +30,6 @@ async fn main() {
 
     let db_name = env::var("DB_NAME").expect("DB_NAME must be set");
     let transaction_log = TransactionLog::new(0, 0, 0, &mongodb_uri, &db_name).await;
-
-    let db_name = env::var("DB_SIM_NAME").expect("DB_SIM_NAME must be set");
     let model_params = ModelParams::new(&mongodb_uri, &db_name).await;
 
     match command.as_str() {

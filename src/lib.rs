@@ -18,8 +18,13 @@ impl RandomForest {
         Self { model }
     }
 
-    pub async fn predict(&self, x: DenseMatrix<f64>) {
+    pub async fn predict(&self, x: DenseMatrix<f64>) -> bool {
         let prediction = self.model.predict(&x).unwrap();
         log::info!("Prediction: {:?}", prediction);
+        if prediction.len() == 1 {
+            prediction[0] == 1
+        } else {
+            false
+        }
     }
 }

@@ -19,7 +19,7 @@ async fn main() {
 
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 3 {
-        log::error!("Usage: {} <train|predict> <key> [options]", args[0]);
+        log::error!("Usage: {} <train|predict|upload> <key> [dbname]", args[0]);
         return;
     }
 
@@ -28,22 +28,49 @@ async fn main() {
 
     let mongodb_uri = env::var("MONGODB_URI").expect("MONGODB_URI must be set");
 
-    let db_name = env::var("DB_NAME").expect("DB_NAME must be set");
-    let transaction_log = TransactionLog::new(0, 0, 0, &mongodb_uri, &db_name).await;
-    let model_params = ModelParams::new(&mongodb_uri, &db_name).await;
-
     match command.as_str() {
         "train" => {
+            let db_name = env::var("DB_NAME").expect("DB_NAME must be set");
+            let transaction_log = TransactionLog::new(0, 0, 0, &mongodb_uri, &db_name).await;
+            let model_params = ModelParams::new(&mongodb_uri, &db_name).await;
             let (x, y) = download_data(&transaction_log, key).await;
             grid_search_and_train(key, &model_params, x, y, 5).await;
         }
         "predict" => {
+            let db_name = env::var("DB_NAME").expect("DB_NAME must be set");
+            let model_params = ModelParams::new(&mongodb_uri, &db_name).await;
             let x = generate_single_data_point(key);
             let random_forest = RandomForest::new(key, &model_params).await;
             random_forest.predict(x).await;
         }
+        "upload" => {
+            if args.len() < 4 {
+                log::error!("Usage: {} upload <key> <dbname>", args[0]);
+                return;
+            }
+            let db_name_dst = &args[3];
+            let db_name_src = &env::var("DB_NAME").expect("DB_NAME must be set");
+            upload_model(key, &mongodb_uri, db_name_src, db_name_dst).await;
+        }
         _ => log::error!("Unknown command: {}", command),
     }
+}
+
+async fn upload_model(key: &str, mongodb_uri: &str, db_name_src: &str, db_name_dst: &str) {
+    let model_params = ModelParams::new(&mongodb_uri, db_name_src).await;
+    let serializable_model = model_params
+        .load_model(key)
+        .await
+        .expect("Failed to load model");
+
+    let model_params = ModelParams::new(&mongodb_uri, db_name_dst).await;
+    let serializable_model = SerializableModel {
+        model: serializable_model.model,
+    };
+    model_params
+        .save_model(key, &serializable_model)
+        .await
+        .expect("Failed to save model");
 }
 
 async fn grid_search_and_train(
@@ -178,7 +205,6 @@ async fn grid_search_and_train(
         best_accuracy
     );
 
-    // さらに詳細なパラメータ調整
     let detailed_param_grid = vec![
         RandomForestClassifierParameters {
             criterion: best_params.criterion.clone(),
@@ -241,7 +267,6 @@ async fn grid_search_and_train(
         best_accuracy
     );
 
-    // 最適なパラメータでモデルをトレーニングし保存
     let classifier = RandomForestClassifier::fit(&x, &y, best_params.clone()).unwrap();
     let serialized_model = bincode::serialize(&classifier).unwrap();
     let serializable_model = SerializableModel {

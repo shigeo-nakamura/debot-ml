@@ -41,7 +41,7 @@ async fn main() {
             let model_params = ModelParams::new(&mongodb_uri, &db_name).await;
             let x = generate_single_data_point(key);
             let random_forest = RandomForest::new(key, &model_params).await;
-            random_forest.predict(x).await;
+            random_forest.predict(x);
         }
         "upload" => {
             if args.len() < 4 {

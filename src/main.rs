@@ -1,3 +1,5 @@
+// main.rs
+
 use debot_db::TransactionLog;
 use debot_db::{ModelParams, SerializableModel};
 use debot_ml::RandomForest;
@@ -58,19 +60,33 @@ async fn main() {
 
 async fn upload_model(key: &str, mongodb_uri: &str, db_name_src: &str, db_name_dst: &str) {
     let model_params = ModelParams::new(&mongodb_uri, db_name_src).await;
-    let serializable_model = model_params
-        .load_model(key)
+    let serializable_model_0 = model_params
+        .load_model(&format!("{}_0", key))
         .await
-        .expect("Failed to load model");
+        .expect("Failed to load model 0");
+
+    let serializable_model_1 = model_params
+        .load_model(&format!("{}_1", key))
+        .await
+        .expect("Failed to load model 1");
 
     let model_params = ModelParams::new(&mongodb_uri, db_name_dst).await;
-    let serializable_model = SerializableModel {
-        model: serializable_model.model,
+    let serializable_model_0 = SerializableModel {
+        model: serializable_model_0.model,
     };
+    let serializable_model_1 = SerializableModel {
+        model: serializable_model_1.model,
+    };
+
     model_params
-        .save_model(key, &serializable_model)
+        .save_model(&format!("{}_0", key), &serializable_model_0)
         .await
-        .expect("Failed to save model");
+        .expect("Failed to save model 0");
+
+    model_params
+        .save_model(&format!("{}_1", key), &serializable_model_1)
+        .await
+        .expect("Failed to save model 1");
 }
 
 async fn grid_search_and_train(
@@ -80,6 +96,73 @@ async fn grid_search_and_train(
     y: Vec<i32>,
     k: usize,
 ) {
+    // Prepare data for model 0
+    let (x_0, y_0): (Vec<_>, Vec<_>) = y
+        .iter()
+        .enumerate()
+        .map(|(i, &label)| {
+            (
+                x.get_row(i)
+                    .iterator(0)
+                    .map(|&val| val)
+                    .collect::<Vec<f64>>(),
+                if label == 0 { 0 } else { 1 },
+            )
+        })
+        .unzip();
+
+    let x_0 = DenseMatrix::from_2d_vec(&x_0);
+    let y_0 = y_0.into_iter().collect::<Vec<_>>();
+
+    // Train model 0
+    let best_params_0 = detailed_grid_search(&x_0, &y_0, k);
+    let model_0 = RandomForestClassifier::fit(&x_0, &y_0, best_params_0.clone()).unwrap();
+    let serialized_model_0 = bincode::serialize(&model_0).unwrap();
+    let serializable_model_0 = SerializableModel {
+        model: serialized_model_0,
+    };
+    model_params
+        .save_model(&format!("{}_0", key), &serializable_model_0)
+        .await
+        .expect("Failed to save model 0");
+
+    // Prepare data for model 1
+    let (x_1, y_1): (Vec<_>, Vec<_>) = y
+        .iter()
+        .enumerate()
+        .filter(|&(_, &label)| label != 0)
+        .map(|(i, &label)| {
+            (
+                x.get_row(i)
+                    .iterator(0)
+                    .map(|&val| val)
+                    .collect::<Vec<f64>>(),
+                label,
+            )
+        })
+        .unzip();
+
+    let x_1 = DenseMatrix::from_2d_vec(&x_1);
+    let y_1 = y_1.into_iter().collect::<Vec<_>>();
+
+    // Train model 1
+    let best_params_1 = detailed_grid_search(&x_1, &y_1, k);
+    let model_1 = RandomForestClassifier::fit(&x_1, &y_1, best_params_1.clone()).unwrap();
+    let serialized_model_1 = bincode::serialize(&model_1).unwrap();
+    let serializable_model_1 = SerializableModel {
+        model: serialized_model_1,
+    };
+    model_params
+        .save_model(&format!("{}_1", key), &serializable_model_1)
+        .await
+        .expect("Failed to save model 1");
+}
+
+fn detailed_grid_search(
+    x: &DenseMatrix<f64>,
+    y: &Vec<i32>,
+    k: usize,
+) -> RandomForestClassifierParameters {
     let initial_param_grid = vec![
         RandomForestClassifierParameters {
             criterion: SplitCriterion::Gini,
@@ -131,63 +214,13 @@ async fn grid_search_and_train(
             keep_samples: false,
             seed: 42,
         },
-        RandomForestClassifierParameters {
-            criterion: SplitCriterion::Gini,
-            max_depth: Some(10),
-            min_samples_leaf: 2,
-            min_samples_split: 2,
-            n_trees: 250,
-            m: Some(4),
-            keep_samples: false,
-            seed: 42,
-        },
-        RandomForestClassifierParameters {
-            criterion: SplitCriterion::Gini,
-            max_depth: Some(20),
-            min_samples_leaf: 1,
-            min_samples_split: 5,
-            n_trees: 300,
-            m: Some(5),
-            keep_samples: false,
-            seed: 42,
-        },
-        RandomForestClassifierParameters {
-            criterion: SplitCriterion::Entropy,
-            max_depth: Some(25),
-            min_samples_leaf: 2,
-            min_samples_split: 3,
-            n_trees: 150,
-            m: Some(6),
-            keep_samples: false,
-            seed: 42,
-        },
-        RandomForestClassifierParameters {
-            criterion: SplitCriterion::Entropy,
-            max_depth: Some(15),
-            min_samples_leaf: 1,
-            min_samples_split: 4,
-            n_trees: 200,
-            m: Some(3),
-            keep_samples: false,
-            seed: 42,
-        },
-        RandomForestClassifierParameters {
-            criterion: SplitCriterion::Entropy,
-            max_depth: Some(20),
-            min_samples_leaf: 1,
-            min_samples_split: 2,
-            n_trees: 250,
-            m: Some(5),
-            keep_samples: false,
-            seed: 42,
-        },
     ];
 
     let mut best_params = &initial_param_grid[0];
     let mut best_accuracy = 0.0;
 
     for params in &initial_param_grid {
-        let avg_accuracy = cross_validate(&x, &y, k, params);
+        let avg_accuracy = cross_validate(x, y, k, params);
         log::info!(
             "Initial Parameters: {:?}, Average cross-validation accuracy: {}",
             params,
@@ -249,7 +282,7 @@ async fn grid_search_and_train(
     ];
 
     for params in &detailed_param_grid {
-        let avg_accuracy = cross_validate(&x, &y, k, params);
+        let avg_accuracy = cross_validate(x, y, k, params);
         log::info!(
             "Detailed Parameters: {:?}, Average cross-validation accuracy: {}",
             params,
@@ -267,15 +300,7 @@ async fn grid_search_and_train(
         best_accuracy
     );
 
-    let classifier = RandomForestClassifier::fit(&x, &y, best_params.clone()).unwrap();
-    let serialized_model = bincode::serialize(&classifier).unwrap();
-    let serializable_model = SerializableModel {
-        model: serialized_model,
-    };
-    model_params
-        .save_model(key, &serializable_model)
-        .await
-        .expect("Failed to save model");
+    best_params.clone()
 }
 
 fn cross_validate(
@@ -374,14 +399,14 @@ async fn download_data(
         }
     }
 
-    let count_class_0 = outputs.iter().filter(|&&x| x == -1).count();
-    let count_class_1 = outputs.iter().filter(|&&x| x == 0).count();
-    let count_class_2 = outputs.iter().filter(|&&x| x == 1).count();
+    let count_class_0 = outputs.iter().filter(|&&x| x == 0).count();
+    let count_class_neg1 = outputs.iter().filter(|&&x| x == -1).count();
+    let count_class_1 = outputs.iter().filter(|&&x| x == 1).count();
 
     log::info!("num of inputs = {}", inputs.len());
-    log::info!("Number of class -1 samples = {}", count_class_0);
-    log::info!("Number of class 0 samples = {}", count_class_1);
-    log::info!("Number of class 1 samples = {}", count_class_2);
+    log::info!("Number of class 0 samples = {}", count_class_0);
+    log::info!("Number of class -1 samples = {}", count_class_neg1);
+    log::info!("Number of class 1 samples = {}", count_class_1);
 
     let input_slices: Vec<&[f64]> = inputs.iter().map(|v| v.as_slice()).collect();
     let x = DenseMatrix::from_2d_array(&input_slices);

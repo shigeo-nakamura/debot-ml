@@ -1,6 +1,6 @@
 [package]
 name = "debot_ml"
-version = "0.1.12"
+version = "0.1.13"
 authors = ["Shigeo NAKAMURA <nakamura_shigeo@yahoo.com>"]
 edition = "2021"
 description = "ML prediction"

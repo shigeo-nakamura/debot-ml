@@ -65,28 +65,15 @@ async fn upload_model(key: &str, mongodb_uri: &str, db_name_src: &str, db_name_d
         .await
         .expect("Failed to load model 0");
 
-    let serializable_model_1 = model_params
-        .load_model(&format!("{}_1", key))
-        .await
-        .expect("Failed to load model 1");
-
     let model_params = ModelParams::new(&mongodb_uri, db_name_dst).await;
     let serializable_model_0 = SerializableModel {
         model: serializable_model_0.model,
-    };
-    let serializable_model_1 = SerializableModel {
-        model: serializable_model_1.model,
     };
 
     model_params
         .save_model(&format!("{}_0", key), &serializable_model_0)
         .await
         .expect("Failed to save model 0");
-
-    model_params
-        .save_model(&format!("{}_1", key), &serializable_model_1)
-        .await
-        .expect("Failed to save model 1");
 }
 
 async fn grid_search_and_train(
@@ -106,7 +93,7 @@ async fn grid_search_and_train(
                     .iterator(0)
                     .map(|&val| val)
                     .collect::<Vec<f64>>(),
-                if label == 0 { 0 } else { 1 },
+                label,
             )
         })
         .unzip();
@@ -125,37 +112,6 @@ async fn grid_search_and_train(
         .save_model(&format!("{}_0", key), &serializable_model_0)
         .await
         .expect("Failed to save model 0");
-
-    // Prepare data for model 1
-    let (x_1, y_1): (Vec<_>, Vec<_>) = y
-        .iter()
-        .enumerate()
-        .filter(|&(_, &label)| label != 0)
-        .map(|(i, &label)| {
-            (
-                x.get_row(i)
-                    .iterator(0)
-                    .map(|&val| val)
-                    .collect::<Vec<f64>>(),
-                label,
-            )
-        })
-        .unzip();
-
-    let x_1 = DenseMatrix::from_2d_vec(&x_1);
-    let y_1 = y_1.into_iter().collect::<Vec<_>>();
-
-    // Train model 1
-    let best_params_1 = detailed_grid_search(&x_1, &y_1, k);
-    let model_1 = RandomForestClassifier::fit(&x_1, &y_1, best_params_1.clone()).unwrap();
-    let serialized_model_1 = bincode::serialize(&model_1).unwrap();
-    let serializable_model_1 = SerializableModel {
-        model: serialized_model_1,
-    };
-    model_params
-        .save_model(&format!("{}_1", key), &serializable_model_1)
-        .await
-        .expect("Failed to save model 1");
 }
 
 fn detailed_grid_search(
@@ -394,6 +350,17 @@ async fn download_data(
                 debug_log.input_8.to_f64().expect("conversion failed"),
                 debug_log.input_9.to_f64().expect("conversion failed"),
                 debug_log.input_10.to_f64().expect("conversion failed"),
+                debug_log.input_11.to_f64().expect("conversion failed"),
+                debug_log.input_12.to_f64().expect("conversion failed"),
+                debug_log.input_12.to_f64().expect("conversion failed"),
+                debug_log.input_13.to_f64().expect("conversion failed"),
+                debug_log.input_14.to_f64().expect("conversion failed"),
+                debug_log.input_15.to_f64().expect("conversion failed"),
+                debug_log.input_16.to_f64().expect("conversion failed"),
+                debug_log.input_17.to_f64().expect("conversion failed"),
+                debug_log.input_18.to_f64().expect("conversion failed"),
+                debug_log.input_19.to_f64().expect("conversion failed"),
+                debug_log.input_20.to_f64().expect("conversion failed"),
             ]);
             outputs.push(debug_log.output_1.to_i32().expect("conversion failed"));
         }

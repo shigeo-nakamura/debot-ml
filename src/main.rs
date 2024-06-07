@@ -101,6 +101,11 @@ async fn grid_search_and_train(
     let x_0 = DenseMatrix::from_2d_vec(&x_0);
     let y_0 = y_0.into_iter().collect::<Vec<_>>();
 
+    if y_0.iter().all(|&label| label == 0) || y_0.iter().all(|&label| label == 1) {
+        log::error!("Training data contains only one class. At least two classes are required.");
+        return;
+    }
+
     // Train model 0
     let best_params_0 = detailed_grid_search(&x_0, &y_0, k);
     let model_0 = RandomForestClassifier::fit(&x_0, &y_0, best_params_0.clone()).unwrap();
@@ -362,17 +367,15 @@ async fn download_data(
                 debug_log.input_19.to_f64().expect("conversion failed"),
                 debug_log.input_20.to_f64().expect("conversion failed"),
             ]);
-            outputs.push(debug_log.output_1.to_i32().expect("conversion failed"));
+            outputs.push(debug_log.output_2.to_i32().expect("conversion failed"));
         }
     }
 
     let count_class_0 = outputs.iter().filter(|&&x| x == 0).count();
-    let count_class_neg1 = outputs.iter().filter(|&&x| x == -1).count();
     let count_class_1 = outputs.iter().filter(|&&x| x == 1).count();
 
     log::info!("num of inputs = {}", inputs.len());
     log::info!("Number of class 0 samples = {}", count_class_0);
-    log::info!("Number of class -1 samples = {}", count_class_neg1);
     log::info!("Number of class 1 samples = {}", count_class_1);
 
     let input_slices: Vec<&[f64]> = inputs.iter().map(|v| v.as_slice()).collect();

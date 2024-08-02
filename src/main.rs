@@ -32,10 +32,17 @@ async fn main() {
 
     match command.as_str() {
         "train" => {
-            let db_name = env::var("DB_NAME").expect("DB_NAME must be set");
-            let transaction_log = TransactionLog::new(0, 0, 0, &mongodb_uri, &db_name).await;
-            let model_params = ModelParams::new(&mongodb_uri, &db_name).await;
-            let (x, y) = download_data(&transaction_log, key).await;
+            let db_names = env::var("DB_NAMES").expect("DB_NAMES must be set");
+            let db_names: Vec<&str> = db_names.split(',').collect();
+
+            let mut transaction_logs: Vec<TransactionLog> = Vec::new();
+            for db_name in db_names.to_owned() {
+                let log = TransactionLog::new(0, 0, 0, &mongodb_uri, &db_name).await;
+                transaction_logs.push(log);
+            }
+
+            let model_params = ModelParams::new(&mongodb_uri, db_names[0]).await;
+            let (x, y) = download_data(&transaction_logs, key).await;
             grid_search_and_train(key, &model_params, x, y, 5).await;
         }
         "predict" => {
@@ -317,7 +324,7 @@ fn cross_validate(
 }
 
 async fn download_data(
-    transaction_log: &TransactionLog,
+    transaction_logs: &Vec<TransactionLog>,
     key: &str,
 ) -> (DenseMatrix<f64>, Vec<i32>) {
     let parts: Vec<&str> = key.split('_').collect();
@@ -327,48 +334,49 @@ async fn download_data(
     let token_name = parts[0];
     let position_type = parts[1];
 
-    // Download price data
-    let db = transaction_log.get_db().await.expect("db is none");
-    let positions = TransactionLog::get_all_open_positions(&db).await;
-
     // Collect inputs and outputs from positions
     let mut inputs: Vec<Vec<f64>> = Vec::new();
     let mut outputs: Vec<i32> = Vec::new();
 
-    for position in positions {
-        if position.token_name == token_name
-            && position.position_type == position_type
-            && matches!(
-                position.state.as_str(),
-                "Closed(TakeProfit)" | "Closed(CutLoss)" | "Closed(Expired)"
-            )
-        {
-            let debug_log = &position.debug;
-            inputs.push(vec![
-                debug_log.input_1.to_f64().expect("conversion failed"),
-                debug_log.input_2.to_f64().expect("conversion failed"),
-                debug_log.input_3.to_f64().expect("conversion failed"),
-                debug_log.input_4.to_f64().expect("conversion failed"),
-                debug_log.input_5.to_f64().expect("conversion failed"),
-                debug_log.input_6.to_f64().expect("conversion failed"),
-                debug_log.input_7.to_f64().expect("conversion failed"),
-                debug_log.input_8.to_f64().expect("conversion failed"),
-                debug_log.input_9.to_f64().expect("conversion failed"),
-                debug_log.input_10.to_f64().expect("conversion failed"),
-                debug_log.input_11.to_f64().expect("conversion failed"),
-                debug_log.input_12.to_f64().expect("conversion failed"),
-                debug_log.input_12.to_f64().expect("conversion failed"),
-                debug_log.input_13.to_f64().expect("conversion failed"),
-                debug_log.input_14.to_f64().expect("conversion failed"),
-                debug_log.input_15.to_f64().expect("conversion failed"),
-                debug_log.input_16.to_f64().expect("conversion failed"),
-                debug_log.input_17.to_f64().expect("conversion failed"),
-                debug_log.input_18.to_f64().expect("conversion failed"),
-                debug_log.input_19.to_f64().expect("conversion failed"),
-                debug_log.input_20.to_f64().expect("conversion failed"),
-            ]);
-            outputs.push(debug_log.output_2.to_i32().expect("conversion failed"));
+    for transaction_log in transaction_logs {
+        let db = transaction_log.get_db().await.expect("db is none");
+        let positions = TransactionLog::get_all_open_positions(&db).await;
+
+        for position in positions {
+            if position.token_name == token_name
+                && position.position_type == position_type
+                && matches!(
+                    position.state.as_str(),
+                    "Closed(TakeProfit)" | "Closed(CutLoss)" | "Closed(Expired)"
+                )
+            {
+                let debug_log = &position.debug;
+                inputs.push(vec![
+                    debug_log.input_1.to_f64().expect("conversion failed"),
+                    debug_log.input_2.to_f64().expect("conversion failed"),
+                    debug_log.input_3.to_f64().expect("conversion failed"),
+                    debug_log.input_4.to_f64().expect("conversion failed"),
+                    debug_log.input_5.to_f64().expect("conversion failed"),
+                    debug_log.input_6.to_f64().expect("conversion failed"),
+                    debug_log.input_7.to_f64().expect("conversion failed"),
+                    debug_log.input_8.to_f64().expect("conversion failed"),
+                    debug_log.input_9.to_f64().expect("conversion failed"),
+                    debug_log.input_10.to_f64().expect("conversion failed"),
+                    debug_log.input_11.to_f64().expect("conversion failed"),
+                    debug_log.input_12.to_f64().expect("conversion failed"),
+                    debug_log.input_13.to_f64().expect("conversion failed"),
+                    debug_log.input_14.to_f64().expect("conversion failed"),
+                    debug_log.input_15.to_f64().expect("conversion failed"),
+                    debug_log.input_16.to_f64().expect("conversion failed"),
+                    debug_log.input_17.to_f64().expect("conversion failed"),
+                    debug_log.input_18.to_f64().expect("conversion failed"),
+                    debug_log.input_19.to_f64().expect("conversion failed"),
+                    debug_log.input_20.to_f64().expect("conversion failed"),
+                ]);
+                outputs.push(debug_log.output_2.to_i32().expect("conversion failed"));
+            }
         }
+        log::info!("num of positions = {}", inputs.len());
     }
 
     let count_class_0 = outputs.iter().filter(|&&x| x == 0).count();
